@@ -1,0 +1,256 @@
+---
+title: "Logistic Regression and Resampling using k-fold validation"
+author: "Gosuddin Siddiqi"
+date: "February 16, 2017"
+output: pdf_document
+---
+
+```{r warning=FALSE}
+#load the datasetset
+dataset <- read.csv("census data.csv")
+```
+
+Creating a new column
+
+```{r}
+
+#initialize with 0
+dataset$income.g50 <- 0
+
+
+#based on value decide 0 or 1
+dataset$income.g50[dataset$income == " >50K"] <- 1
+```
+
+
+Exploring Relationship
+
+```{r}
+mod <- glm(income.g50 ~ education + age + sex + race,
+data=dataset[,!colnames(dataset)%in%"income"], family="binomial")
+```
+
+
+a. What are the odds ratios for high earnings (remember the output of summary() gives
+log odds ratios) for having a masters degree? Or a 1st - 4th grade education? Are these
+statistically significant? What about multiple comparisons?
+
+```{r}
+summary(mod)
+```
+
+The odds ratio for higher income is exp(2.91) i.e. `r exp(2.91)` when a person has a master's degree. The p values is <0.05 thus it is statistically significant.
+
+The odds ratio for higher income is exp(-0.1801) i.e. `r exp(-0.181)` when a person has a master's degree. The p-value is >0.05 thus it is not statistically significant.
+
+There are predictors which has p-value in the order of -16 and for them I can be confident that with multiple comparisons they would be significant.
+
+
+
+b. What are the effects of age and sex? Again, are they statistically significant? Are they practically significant? Are they fair?
+Age:
+odd ratio is `r exp(0.0433)`. Here it is fair because income increases with experience.
+
+Sex:
+Odd ratio is `r exp(1.291)` 
+Being male increases the chances on earning higher incomes. Here it is unfair because there is discrimination based on sex.
+
+
+
+3. Exploring Relationships II: Plot age by the outcome and the observed predicted
+probabilities. Why are the predicted probabilities so variable?
+
+```{r}
+
+x <- dataset$age
+plot(x, dataset$income.g50, col="blue")
+fits <- fitted(mod)
+points(x, fits, pch=19, cex=0.3)
+
+
+```
+
+Since we have increased the number of features we observe variablity in the outcome
+
+
+
+4. Explore some cutoffs for the probabilities: Tabulate the outcome with a cutoff of
+0.25, 0.5, and 0.75. Which has the lowest percent error?
+
+```{r}
+tab <- table(dataset$income.g50, fits>=0.25)
+(tab[1,2]+tab[2,1])/sum(tab)
+
+tab <- table(dataset$income.g50, fits>=0.5)
+(tab[1,2]+tab[2,1])/sum(tab)
+
+tab <- table(dataset$income.g50, fits>=0.75)
+(tab[1,2]+tab[2,1])/sum(tab)
+
+```
+
+The code with cutoff as 0.5 has the lowest percent error of 20.61%  
+
+5. Examine this model.
+a. Plot the ROC curve and calculate the AUC for this model.
+
+```{r}
+
+library(AUC)
+y <- factor(dataset$income.g50)
+rr <- roc(fits, y)
+plot(rr)
+auc(rr)
+
+```
+
+b. How well does it fit?
+
+The area under curve is around 80%. Implies a decent fit
+
+
+
+6. Let's formulate another model.
+a. Fit a model with all covariates (except "income"!). Do you see the same patterns for level of schooling?
+```{r}
+mod <- glm(income.g50~.,
+data=dataset[,!colnames(dataset)%in%c("income")], family="binomial")
+
+mod
+```
+
+Not for all schooling follows the same pattern
+
+b. Plot the age by the outcome and the observed predicted probabilities. Do the
+predicted probabilities have the same pattern as the other model? Why or why not?
+
+```{r}
+x <- dataset$age
+plot(x, dataset$income.g50, col="blue")
+fits <- fitted(mod)
+points(x, fits, pch=19, cex=0.3)
+```
+
+The pattern is not the same. This is because we are now considering more features in our model.
+
+c. Calculate the percent error as before for cutoffs 0.25, 0.5, 0.75. Which cutoff has the lowest percent error? Does this model perform better than the other model?
+
+```{r}
+tab <- table(dataset$income.g50, fits>=0.25)
+(tab[1,2]+tab[2,1])/sum(tab)
+
+tab <- table(dataset$income.g50, fits>=0.5)
+(tab[1,2]+tab[2,1])/sum(tab)
+
+tab <- table(dataset$income.g50, fits>=0.75)
+(tab[1,2]+tab[2,1])/sum(tab)
+
+```
+
+Yes this model outperforms the previous and has lower error rates, least at .50 cutoff
+
+d. Plot the ROC and calculate the AUC. Again, does this model out perform the other
+model?
+
+```{r}
+
+y <- factor(dataset$income.g50)
+rr <- roc(fits, y)
+plot(rr)
+auc(rr)
+
+```
+Yes this model outperform the other.
+
+
+Extra credit (5 points): Run a k-fold validation on both models and decide which you
+would prefer to use for predicting high income.
+
+```{r warning=FALSE}
+
+get.cutoff <- function(fits, labs){
+  youden <- sensitivity(fits, labs)$measure + specificity(fits, labs)$measure-1
+  roc.ix <- which.max(youden)
+  sens <- sensitivity(fits, labs)
+  sens$cutoffs[roc.ix]
+}
+```
+
+Considering  all features.
+```{r warning=FALSE}
+set.seed(123)
+
+k <- 10 # number of folds
+
+acc <- NULL
+
+#k-fold validation for the first model.
+for(i in 1:k)
+{
+   # 95-5 split
+   smp_size <- floor(0.95 * nrow(dataset))
+   index <- sample(seq_len(nrow(dataset)),size=smp_size)
+   
+   #Splitting the data
+   train <- dataset[index, ]
+   test <- dataset[-index, ]
+   
+   # Fitting
+   model <- glm(income.g50~ education + age + sex + race,family='binomial',data=train)
+   
+   # Predict results
+   results_prob <- predict(model,subset(test,select=c(1:ncol(dataset)-1)),type='response')
+   
+   # If prob > 0.5 (Cutoff) then 1, else 0
+   results <- ifelse(results_prob > 0.5,1,0)
+   
+   #Accuracy 
+   answers <- test$income.g50
+   error <- mean(answers != results)
+   
+   acc[i] <- 1-error
+}
+
+mean(acc)
+```
+
+Considering the only education,age, sex and race
+
+```{r warning=FALSE, message=FALSE}
+
+
+k <- 10 # k-fold
+
+acc2 <- NULL
+
+
+for(i in 1:k)
+{
+  #k-fold validation for the first model.
+   smp_size2 <- floor(0.95 * nrow(dataset))
+   index2 <- sample(seq_len(nrow(dataset)),size=smp_size2)
+   
+   #Splitting the data
+   train <- dataset[index2, ]
+   test <- dataset[-index2, ]
+   
+   # Fitting
+   model2 <- glm(income.g50~.,family='binomial',data=train[,!colnames(dataset)%in%"income"])
+   
+   # Predict results
+   results_prob <- predict(model2,subset(test,select=c(1:ncol(dataset)-1)),type='response')
+   
+   # If prob > 0.5 (Cutoff) then 1, else 0
+   results <- ifelse(results_prob > 0.5,1,0)
+   
+   #Accuracy
+   answers <- test$income.g50
+   error <- mean(answers != results)
+   
+   acc2[i] <- 1-error
+}
+
+mean(acc2)
+```
+
+Since second model i.e. considering all variables gives better accuracy, I would prefer second model to predict higher incomes.
