@@ -163,7 +163,7 @@ auc(rr)
 Yes this model outperform the other.
 
 
-Extra credit (5 points): Run a k-fold validation on both models and decide which you
+Run a k-fold validation on both models and decide which you
 would prefer to use for predicting high income.
 
 ```{r warning=FALSE}
